@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta
+      name="description"
+      content="Elemental Rift: a static Three.js 3D match-3 puzzle game with ice, fire, lightning, and cascading elemental effects."
+    />
+    <title>Elemental Rift</title>
+  </head>
+  <body>
+    <div id="app">
+      <canvas id="game-canvas" aria-label="Elemental Rift 3D match puzzle board"></canvas>
+      <div class="hud" aria-live="polite">
+        <section class="hud__cluster hud__cluster--left">
+          <div class="brand">Elemental Rift</div>
+          <div class="stat-row">
+            <span>第 <strong id="level">1</strong> 关</span>
+            <span><strong id="moves">28</strong> 步</span>
+          </div>
+          <div class="score">得分 <strong id="score">0</strong></div>
+        </section>
+        <section class="hud__cluster hud__cluster--right">
+          <div class="combo">
+            <span>连锁</span>
+            <strong id="combo">x1</strong>
+          </div>
+          <button id="restart" class="icon-button" type="button" aria-label="重新开始当前关卡" title="重新开始">
+            <span aria-hidden="true">↻</span>
+          </button>
+        </section>
+        <section class="objective" id="objective">唤醒元素裂隙</section>
+        <div class="toast" id="toast">交换相邻元素，连成 3 个或更多</div>
+        <section class="game-over" id="game-over" hidden>
+          <h1 id="result-title">裂隙稳定</h1>
+          <p id="result-copy">继续深入下一层风暴。</p>
+          <button id="next-level" type="button">继续</button>
+        </section>
+      </div>
+    </div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
