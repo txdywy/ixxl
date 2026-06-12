@@ -92,12 +92,13 @@ class MatchGame {
       powerPreference: 'high-performance',
     });
     this.renderer.setClearColor(0x070914, 1);
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure = 1.15;
+    this.renderer.toneMappingExposure = 0.88;
     this.composer = new EffectComposer(this.renderer);
+    this.composer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
     this.composer.addPass(new RenderPass(this.scene, this.camera));
-    this.composer.addPass(new UnrealBloomPass(new THREE.Vector2(1, 1), 0.62, 0.5, 0.2));
+    this.composer.addPass(new UnrealBloomPass(new THREE.Vector2(1, 1), 0.34, 0.44, 0.28));
 
     this.setupScene();
     this.setupInput();
@@ -332,8 +333,9 @@ class MatchGame {
           if (!protectedSpecials.has(cell.id)) removed.add(cell);
         });
       }
+      for (const line of matches) this.burstLine(line, matches.length + this.combo);
       this.score += [...removed].reduce((sum, cell) => sum + ELEMENT_THEME[cell.kind].score * this.combo, 0);
-      for (const cell of removed) this.burstCell(cell, matches.length);
+      for (const cell of removed) this.burstCell(cell, matches.length, false);
       this.updateHud();
       await this.sleep(this.reducedMotion ? 90 : 330);
       this.removeCells(removed);
@@ -484,7 +486,7 @@ class MatchGame {
     return new THREE.MeshStandardMaterial({
       color: theme.color,
       emissive: theme.emissive,
-      emissiveIntensity: kind === 'void' ? 0.86 : 0.58,
+      emissiveIntensity: kind === 'void' ? 0.68 : 0.42,
       metalness: kind === 'sun' ? 0.7 : 0.28,
       roughness: kind === 'ice' ? 0.1 : 0.26,
       transparent: true,
@@ -499,7 +501,7 @@ class MatchGame {
       new THREE.MeshBasicMaterial({
         color: 0xffffff,
         transparent: true,
-        opacity: kind === 'void' ? 0.34 : 0.5,
+        opacity: kind === 'void' ? 0.25 : 0.34,
         blending: THREE.AdditiveBlending,
         depthWrite: false,
       }),
@@ -513,7 +515,7 @@ class MatchGame {
       new THREE.MeshBasicMaterial({
         color: theme.color,
         transparent: true,
-        opacity: 0.4,
+        opacity: 0.28,
         blending: THREE.AdditiveBlending,
         depthWrite: false,
       }),
@@ -618,38 +620,59 @@ class MatchGame {
     mesh.add(aura);
   }
 
-  private burstCell(cell: Cell, intensity: number) {
+  private burstLine(line: Cell[], intensity: number) {
+    if (!line.length) return;
+    const center = new THREE.Vector3();
+    const kindCounts = new Map<ElementKind, number>();
+    for (const cell of line) {
+      center.add(this.cellToPosition(cell.row, cell.col));
+      kindCounts.set(cell.kind, (kindCounts.get(cell.kind) ?? 0) + 1);
+    }
+    center.multiplyScalar(1 / line.length);
+    center.y = 0.78;
+    const kind = [...kindCounts.entries()].sort((a, b) => b[1] - a[1])[0][0];
+    const theme = ELEMENT_THEME[kind];
+    const special = line.length >= 5 ? 'nova' : line.length >= 4 ? 'line' : 'none';
+    this.spawnParticles(center, theme.color, kind, intensity, true);
+    this.spawnShards(center, theme.color, kind, intensity, true);
+    this.spawnShockwave(center, theme.color, intensity, special);
+    if (kind === 'storm' || line.length >= 4) this.spawnLightning(center, theme.color, line.length >= 5 ? 6 : 3);
+    this.flashLight(center, theme.color, line.length >= 5 ? 42 : 28);
+  }
+
+  private burstCell(cell: Cell, intensity: number, heavy: boolean) {
     const position = this.cellToPosition(cell.row, cell.col);
     position.y = 0.55;
     const theme = ELEMENT_THEME[cell.kind];
-    this.spawnParticles(position, theme.color, cell.kind, intensity);
-    this.spawnShards(position, theme.color, cell.kind, intensity);
+    this.spawnParticles(position, theme.color, cell.kind, intensity, heavy);
+    if (!heavy) return;
+    this.spawnShards(position, theme.color, cell.kind, intensity, true);
     this.spawnShockwave(position, theme.color, intensity, cell.special);
-    if (cell.kind === 'storm' || cell.special === 'cross' || cell.special === 'nova') this.spawnLightning(position, theme.color, cell.special === 'nova' ? 7 : 4);
-    if (cell.kind === 'fire') this.flashLight(position, 0xff4a16, 42);
-    if (cell.kind === 'ice') this.flashLight(position, 0x6bd9ff, 34);
-    if (cell.kind === 'sun') this.flashLight(position, 0xffe18a, 38);
-    if (cell.kind === 'void') this.flashLight(position, 0x936dff, 36);
+    if (cell.kind === 'storm' || cell.special === 'cross' || cell.special === 'nova') this.spawnLightning(position, theme.color, cell.special === 'nova' ? 5 : 3);
+    if (cell.kind === 'fire') this.flashLight(position, 0xff4a16, 32);
+    if (cell.kind === 'ice') this.flashLight(position, 0x6bd9ff, 26);
+    if (cell.kind === 'sun') this.flashLight(position, 0xffe18a, 28);
+    if (cell.kind === 'void') this.flashLight(position, 0x936dff, 28);
   }
 
-  private spawnParticles(origin: THREE.Vector3, color: number, kind: ElementKind, intensity: number) {
-    const count = this.reducedMotion ? 24 : 70 + intensity * 18;
+  private spawnParticles(origin: THREE.Vector3, color: number, kind: ElementKind, intensity: number, heavy: boolean) {
+    const count = this.reducedMotion ? (heavy ? 16 : 6) : heavy ? 46 + intensity * 10 : 10 + intensity * 2;
     const positions: number[] = [];
     const velocities: number[] = [];
     for (let i = 0; i < count; i += 1) {
       positions.push(origin.x, origin.y, origin.z);
       const angle = Math.random() * Math.PI * 2;
-      const speed = 0.035 + Math.random() * 0.105;
-      velocities.push(Math.cos(angle) * speed, 0.035 + Math.random() * 0.12, Math.sin(angle) * speed);
+      const speed = (heavy ? 0.035 : 0.018) + Math.random() * (heavy ? 0.09 : 0.04);
+      velocities.push(Math.cos(angle) * speed, (heavy ? 0.035 : 0.018) + Math.random() * (heavy ? 0.11 : 0.045), Math.sin(angle) * speed);
     }
     const geo = new THREE.BufferGeometry();
     geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
     geo.setAttribute('velocity', new THREE.Float32BufferAttribute(velocities, 3));
     const mat = new THREE.PointsMaterial({
       color,
-      size: kind === 'ice' ? 0.095 : 0.13,
+      size: kind === 'ice' ? (heavy ? 0.09 : 0.07) : heavy ? 0.12 : 0.08,
       transparent: true,
-      opacity: 0.95,
+      opacity: heavy ? 0.82 : 0.6,
       blending: THREE.AdditiveBlending,
       depthWrite: false,
     });
@@ -660,16 +683,16 @@ class MatchGame {
     this.particles.push(points);
   }
 
-  private spawnShards(origin: THREE.Vector3, color: number, kind: ElementKind, intensity: number) {
-    const shardCount = this.reducedMotion ? 4 : 8 + intensity * 3;
+  private spawnShards(origin: THREE.Vector3, color: number, kind: ElementKind, intensity: number, heavy: boolean) {
+    const shardCount = this.reducedMotion ? (heavy ? 3 : 1) : heavy ? 5 + intensity * 2 : 2;
     const shardMaterial = new THREE.MeshStandardMaterial({
       color,
       emissive: color,
-      emissiveIntensity: 0.7,
+      emissiveIntensity: 0.45,
       metalness: kind === 'sun' ? 0.65 : 0.18,
       roughness: 0.22,
       transparent: true,
-      opacity: 0.92,
+      opacity: 0.78,
     });
     for (let i = 0; i < shardCount; i += 1) {
       const geometry =
