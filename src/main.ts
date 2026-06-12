@@ -21,8 +21,8 @@ interface FloatingText {
   velocity: number;
 }
 
-const BOARD_SIZE = 8;
-const CELL_GAP = 1.06;
+const BOARD_SIZE = 7;
+const CELL_GAP = 1.26;
 const MAX_LEVELS = 8;
 const ELEMENTS: ElementKind[] = ['ice', 'fire', 'storm', 'life', 'sun', 'void'];
 const ELEMENT_THEME: Record<ElementKind, { color: number; emissive: number; name: string; score: number }> = {
@@ -69,6 +69,7 @@ class MatchGame {
   private floatingTexts: FloatingText[] = [];
   private particles: THREE.Points[] = [];
   private lightning: THREE.Line[] = [];
+  private shockwaves: THREE.Mesh[] = [];
   private reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   private ui = {
     level: document.querySelector<HTMLSpanElement>('#level')!,
@@ -96,7 +97,7 @@ class MatchGame {
     this.renderer.toneMappingExposure = 1.15;
     this.composer = new EffectComposer(this.renderer);
     this.composer.addPass(new RenderPass(this.scene, this.camera));
-    this.composer.addPass(new UnrealBloomPass(new THREE.Vector2(1, 1), 0.46, 0.44, 0.24));
+    this.composer.addPass(new UnrealBloomPass(new THREE.Vector2(1, 1), 0.62, 0.5, 0.2));
 
     this.setupScene();
     this.setupInput();
@@ -170,7 +171,7 @@ class MatchGame {
 
   private createBoardBase() {
     const base = new THREE.Mesh(
-      new THREE.BoxGeometry(BOARD_SIZE * CELL_GAP + 0.95, 0.38, BOARD_SIZE * CELL_GAP + 0.95),
+      new THREE.BoxGeometry(BOARD_SIZE * CELL_GAP + 1.08, 0.42, BOARD_SIZE * CELL_GAP + 1.08),
       new THREE.MeshStandardMaterial({
         color: 0x15192a,
         metalness: 0.35,
@@ -183,7 +184,7 @@ class MatchGame {
     this.boardGroup.add(base);
 
     const ring = new THREE.Mesh(
-      new THREE.TorusGeometry(6.45, 0.035, 8, 128),
+      new THREE.TorusGeometry(BOARD_SIZE * CELL_GAP * 0.78, 0.04, 8, 128),
       new THREE.MeshBasicMaterial({ color: 0x7bdcff, transparent: true, opacity: 0.55 }),
     );
     ring.position.y = -0.12;
@@ -193,7 +194,7 @@ class MatchGame {
     for (let row = 0; row < BOARD_SIZE; row += 1) {
       for (let col = 0; col < BOARD_SIZE; col += 1) {
         const pad = new THREE.Mesh(
-          new THREE.BoxGeometry(0.86, 0.045, 0.86),
+          new THREE.BoxGeometry(1.03, 0.055, 1.03),
           new THREE.MeshStandardMaterial({
             color: (row + col) % 2 ? 0x20273d : 0x111827,
             metalness: 0.25,
@@ -463,18 +464,19 @@ class MatchGame {
     mesh.position.copy(this.cellToPosition(cell.row, cell.col));
     mesh.position.y = spawnHigh ? 4.5 + Math.random() * 2 : 0.38;
     mesh.rotation.set(Math.random() * 0.18, Math.random() * Math.PI, Math.random() * 0.18);
+    this.addGemDetails(mesh, cell.kind);
     this.boardGroup.add(mesh);
     this.gemMeshes.set(cell.id, mesh);
     this.decorateSpecial(cell);
   }
 
   private gemGeometry(kind: ElementKind) {
-    if (kind === 'ice') return new THREE.OctahedronGeometry(0.43, 1);
-    if (kind === 'fire') return new THREE.DodecahedronGeometry(0.45, 0);
-    if (kind === 'storm') return new THREE.TetrahedronGeometry(0.52, 0);
-    if (kind === 'life') return new THREE.IcosahedronGeometry(0.43, 1);
-    if (kind === 'sun') return new THREE.TorusKnotGeometry(0.27, 0.115, 72, 10);
-    return new THREE.BoxGeometry(0.62, 0.62, 0.62, 2, 2, 2);
+    if (kind === 'ice') return new THREE.OctahedronGeometry(0.58, 1);
+    if (kind === 'fire') return new THREE.DodecahedronGeometry(0.61, 0);
+    if (kind === 'storm') return new THREE.TetrahedronGeometry(0.74, 0);
+    if (kind === 'life') return new THREE.IcosahedronGeometry(0.59, 1);
+    if (kind === 'sun') return new THREE.TorusKnotGeometry(0.37, 0.16, 86, 12);
+    return new THREE.BoxGeometry(0.78, 0.78, 0.78, 3, 3, 3);
   }
 
   private gemMaterial(kind: ElementKind) {
@@ -482,18 +484,138 @@ class MatchGame {
     return new THREE.MeshStandardMaterial({
       color: theme.color,
       emissive: theme.emissive,
-      emissiveIntensity: kind === 'void' ? 0.72 : 0.48,
-      metalness: kind === 'sun' ? 0.58 : 0.22,
-      roughness: kind === 'ice' ? 0.16 : 0.32,
+      emissiveIntensity: kind === 'void' ? 0.86 : 0.58,
+      metalness: kind === 'sun' ? 0.7 : 0.28,
+      roughness: kind === 'ice' ? 0.1 : 0.26,
       transparent: true,
-      opacity: kind === 'ice' ? 0.88 : 0.96,
+      opacity: kind === 'ice' ? 0.9 : 0.98,
     });
+  }
+
+  private addGemDetails(mesh: THREE.Mesh, kind: ElementKind) {
+    const theme = ELEMENT_THEME[kind];
+    const highlight = new THREE.Mesh(
+      new THREE.SphereGeometry(0.18, 18, 12),
+      new THREE.MeshBasicMaterial({
+        color: 0xffffff,
+        transparent: true,
+        opacity: kind === 'void' ? 0.34 : 0.5,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+      }),
+    );
+    highlight.position.set(-0.13, 0.18, 0.22);
+    highlight.scale.set(1, 0.62, 1);
+    mesh.add(highlight);
+
+    const core = new THREE.Mesh(
+      new THREE.SphereGeometry(0.22, 22, 14),
+      new THREE.MeshBasicMaterial({
+        color: theme.color,
+        transparent: true,
+        opacity: 0.4,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+      }),
+    );
+    core.position.y = 0.04;
+    mesh.add(core);
+
+    if (kind === 'ice') {
+      const shardMat = new THREE.MeshStandardMaterial({
+        color: 0xd7f7ff,
+        emissive: 0x48bfff,
+        emissiveIntensity: 0.45,
+        roughness: 0.08,
+        transparent: true,
+        opacity: 0.72,
+      });
+      for (let i = 0; i < 3; i += 1) {
+        const shard = new THREE.Mesh(new THREE.ConeGeometry(0.09, 0.44, 4), shardMat.clone());
+        shard.position.set(Math.cos(i * 2.1) * 0.32, 0.18, Math.sin(i * 2.1) * 0.32);
+        shard.rotation.set(0.55, i * 2.1, 0.2);
+        mesh.add(shard);
+      }
+    }
+
+    if (kind === 'fire') {
+      const flame = new THREE.Mesh(
+        new THREE.ConeGeometry(0.22, 0.62, 7),
+        new THREE.MeshBasicMaterial({ color: 0xffe18a, transparent: true, opacity: 0.78, blending: THREE.AdditiveBlending }),
+      );
+      flame.position.y = 0.3;
+      flame.rotation.x = -0.18;
+      mesh.add(flame);
+    }
+
+    if (kind === 'storm') {
+      const boltPoints = [
+        new THREE.Vector3(-0.16, 0.34, 0.12),
+        new THREE.Vector3(0.08, 0.08, 0.08),
+        new THREE.Vector3(-0.02, 0.08, 0.08),
+        new THREE.Vector3(0.18, -0.28, 0.08),
+      ];
+      const bolt = new THREE.Line(
+        new THREE.BufferGeometry().setFromPoints(boltPoints),
+        new THREE.LineBasicMaterial({ color: 0xf5e9ff, transparent: true, opacity: 0.95 }),
+      );
+      mesh.add(bolt);
+    }
+
+    if (kind === 'life') {
+      const leafMat = new THREE.MeshStandardMaterial({ color: 0xb9ffc8, emissive: 0x23d76f, emissiveIntensity: 0.42, roughness: 0.36 });
+      for (let i = 0; i < 2; i += 1) {
+        const leaf = new THREE.Mesh(new THREE.SphereGeometry(0.16, 18, 10), leafMat.clone());
+        leaf.scale.set(0.75, 1.7, 0.26);
+        leaf.position.set(i === 0 ? -0.15 : 0.15, 0.24, 0.16);
+        leaf.rotation.set(0.95, 0, i === 0 ? -0.55 : 0.55);
+        mesh.add(leaf);
+      }
+    }
+
+    if (kind === 'sun') {
+      const ring = new THREE.Mesh(
+        new THREE.TorusGeometry(0.42, 0.025, 8, 48),
+        new THREE.MeshBasicMaterial({ color: 0xfff2a4, transparent: true, opacity: 0.78, blending: THREE.AdditiveBlending }),
+      );
+      ring.rotation.x = Math.PI / 2;
+      mesh.add(ring);
+    }
+
+    if (kind === 'void') {
+      const rune = new THREE.Mesh(
+        new THREE.TorusGeometry(0.34, 0.025, 5, 48),
+        new THREE.MeshBasicMaterial({ color: 0x9d78ff, transparent: true, opacity: 0.85, blending: THREE.AdditiveBlending }),
+      );
+      rune.rotation.set(Math.PI / 2, 0, Math.PI / 5);
+      mesh.add(rune);
+    }
   }
 
   private decorateSpecial(cell: Cell) {
     const mesh = this.gemMeshes.get(cell.id);
     if (!mesh) return;
-    mesh.scale.setScalar(cell.special === 'nova' ? 1.22 : cell.special === 'none' ? 1 : 1.1);
+    const oldAura = mesh.getObjectByName('special-aura');
+    if (oldAura) {
+      mesh.remove(oldAura);
+      disposeObject(oldAura);
+    }
+    mesh.scale.setScalar(cell.special === 'nova' ? 1.24 : cell.special === 'none' ? 1 : 1.13);
+    if (cell.special === 'none') return;
+    const theme = ELEMENT_THEME[cell.kind];
+    const aura = new THREE.Mesh(
+      new THREE.TorusGeometry(cell.special === 'nova' ? 0.62 : 0.53, 0.026, 8, 72),
+      new THREE.MeshBasicMaterial({
+        color: cell.special === 'nova' ? 0xffffff : theme.color,
+        transparent: true,
+        opacity: cell.special === 'nova' ? 0.9 : 0.72,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+      }),
+    );
+    aura.name = 'special-aura';
+    aura.rotation.x = Math.PI / 2;
+    mesh.add(aura);
   }
 
   private burstCell(cell: Cell, intensity: number) {
@@ -501,27 +623,31 @@ class MatchGame {
     position.y = 0.55;
     const theme = ELEMENT_THEME[cell.kind];
     this.spawnParticles(position, theme.color, cell.kind, intensity);
-    if (cell.kind === 'storm' || cell.special === 'cross') this.spawnLightning(position, theme.color);
-    if (cell.kind === 'fire') this.flashLight(position, 0xff4a16, 24);
-    if (cell.kind === 'ice') this.flashLight(position, 0x6bd9ff, 18);
+    this.spawnShards(position, theme.color, cell.kind, intensity);
+    this.spawnShockwave(position, theme.color, intensity, cell.special);
+    if (cell.kind === 'storm' || cell.special === 'cross' || cell.special === 'nova') this.spawnLightning(position, theme.color, cell.special === 'nova' ? 7 : 4);
+    if (cell.kind === 'fire') this.flashLight(position, 0xff4a16, 42);
+    if (cell.kind === 'ice') this.flashLight(position, 0x6bd9ff, 34);
+    if (cell.kind === 'sun') this.flashLight(position, 0xffe18a, 38);
+    if (cell.kind === 'void') this.flashLight(position, 0x936dff, 36);
   }
 
   private spawnParticles(origin: THREE.Vector3, color: number, kind: ElementKind, intensity: number) {
-    const count = this.reducedMotion ? 18 : 36 + intensity * 10;
+    const count = this.reducedMotion ? 24 : 70 + intensity * 18;
     const positions: number[] = [];
     const velocities: number[] = [];
     for (let i = 0; i < count; i += 1) {
       positions.push(origin.x, origin.y, origin.z);
       const angle = Math.random() * Math.PI * 2;
-      const speed = 0.018 + Math.random() * 0.055;
-      velocities.push(Math.cos(angle) * speed, 0.025 + Math.random() * 0.07, Math.sin(angle) * speed);
+      const speed = 0.035 + Math.random() * 0.105;
+      velocities.push(Math.cos(angle) * speed, 0.035 + Math.random() * 0.12, Math.sin(angle) * speed);
     }
     const geo = new THREE.BufferGeometry();
     geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
     geo.setAttribute('velocity', new THREE.Float32BufferAttribute(velocities, 3));
     const mat = new THREE.PointsMaterial({
       color,
-      size: kind === 'ice' ? 0.072 : 0.095,
+      size: kind === 'ice' ? 0.095 : 0.13,
       transparent: true,
       opacity: 0.95,
       blending: THREE.AdditiveBlending,
@@ -534,13 +660,85 @@ class MatchGame {
     this.particles.push(points);
   }
 
-  private spawnLightning(origin: THREE.Vector3, color: number) {
-    for (let branch = 0; branch < 3; branch += 1) {
+  private spawnShards(origin: THREE.Vector3, color: number, kind: ElementKind, intensity: number) {
+    const shardCount = this.reducedMotion ? 4 : 8 + intensity * 3;
+    const shardMaterial = new THREE.MeshStandardMaterial({
+      color,
+      emissive: color,
+      emissiveIntensity: 0.7,
+      metalness: kind === 'sun' ? 0.65 : 0.18,
+      roughness: 0.22,
+      transparent: true,
+      opacity: 0.92,
+    });
+    for (let i = 0; i < shardCount; i += 1) {
+      const geometry =
+        kind === 'storm'
+          ? new THREE.TetrahedronGeometry(0.08 + Math.random() * 0.08)
+          : new THREE.OctahedronGeometry(0.07 + Math.random() * 0.08);
+      const shard = new THREE.Mesh(geometry, shardMaterial.clone());
+      shard.position.copy(origin);
+      shard.rotation.set(Math.random() * Math.PI, Math.random() * Math.PI, Math.random() * Math.PI);
+      const angle = Math.random() * Math.PI * 2;
+      const speed = 0.045 + Math.random() * 0.09;
+      shard.userData.velocity = new THREE.Vector3(Math.cos(angle) * speed, 0.05 + Math.random() * 0.11, Math.sin(angle) * speed);
+      shard.userData.spin = new THREE.Vector3(Math.random() * 0.16, Math.random() * 0.2, Math.random() * 0.16);
+      shard.userData.life = 1;
+      this.fxGroup.add(shard);
+      this.shockwaves.push(shard);
+    }
+  }
+
+  private spawnShockwave(origin: THREE.Vector3, color: number, intensity: number, special: SpecialKind) {
+    const rings = special === 'nova' ? 3 : special === 'none' ? 1 : 2;
+    for (let i = 0; i < rings; i += 1) {
+      const ring = new THREE.Mesh(
+        new THREE.TorusGeometry(0.28 + i * 0.08, 0.025, 8, 96),
+        new THREE.MeshBasicMaterial({
+          color: i === 0 && special === 'nova' ? 0xffffff : color,
+          transparent: true,
+          opacity: 0.95,
+          blending: THREE.AdditiveBlending,
+          depthWrite: false,
+        }),
+      );
+      ring.position.copy(origin);
+      ring.position.y += 0.03 + i * 0.05;
+      ring.rotation.x = Math.PI / 2;
+      ring.userData.life = 0.75 + i * 0.18;
+      ring.userData.grow = 0.14 + intensity * 0.014 + i * 0.055;
+      ring.userData.kind = 'ring';
+      this.fxGroup.add(ring);
+      this.shockwaves.push(ring);
+    }
+
+    const column = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.08, special === 'nova' ? 0.7 : 0.48, special === 'nova' ? 3.4 : 2.3, 18, 1, true),
+      new THREE.MeshBasicMaterial({
+        color,
+        transparent: true,
+        opacity: special === 'none' ? 0.16 : 0.24,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+        side: THREE.DoubleSide,
+      }),
+    );
+    column.position.copy(origin);
+    column.position.y += special === 'nova' ? 1.45 : 0.95;
+    column.userData.life = special === 'nova' ? 0.9 : 0.58;
+    column.userData.grow = 0.045;
+    column.userData.kind = 'column';
+    this.fxGroup.add(column);
+    this.shockwaves.push(column);
+  }
+
+  private spawnLightning(origin: THREE.Vector3, color: number, branchCount: number) {
+    for (let branch = 0; branch < branchCount; branch += 1) {
       const points: THREE.Vector3[] = [];
-      const end = origin.clone().add(new THREE.Vector3((Math.random() - 0.5) * 2.4, 0.4, (Math.random() - 0.5) * 2.4));
-      for (let i = 0; i < 7; i += 1) {
-        const t = i / 6;
-        points.push(origin.clone().lerp(end, t).add(new THREE.Vector3((Math.random() - 0.5) * 0.18, Math.random() * 0.15, (Math.random() - 0.5) * 0.18)));
+      const end = origin.clone().add(new THREE.Vector3((Math.random() - 0.5) * 3.4, 0.65, (Math.random() - 0.5) * 3.4));
+      for (let i = 0; i < 9; i += 1) {
+        const t = i / 8;
+        points.push(origin.clone().lerp(end, t).add(new THREE.Vector3((Math.random() - 0.5) * 0.28, Math.random() * 0.24, (Math.random() - 0.5) * 0.28)));
       }
       const geo = new THREE.BufferGeometry().setFromPoints(points);
       const line = new THREE.Line(
@@ -554,9 +752,10 @@ class MatchGame {
   }
 
   private flashLight(origin: THREE.Vector3, color: number, intensity: number) {
-    const light = new THREE.PointLight(color, intensity, 5);
+    const light = new THREE.PointLight(color, intensity, 7.5);
     light.position.copy(origin);
-    light.userData.life = 0.32;
+    light.position.y += 0.75;
+    light.userData.life = 0.42;
     this.fxGroup.add(light);
   }
 
@@ -606,6 +805,36 @@ class MatchGame {
         this.fxGroup.remove(line);
         disposeObject(line);
         this.lightning.splice(i, 1);
+      }
+    }
+    for (let i = this.shockwaves.length - 1; i >= 0; i -= 1) {
+      const object = this.shockwaves[i];
+      object.userData.life -= 0.024 * dt;
+      if (object.userData.velocity instanceof THREE.Vector3) {
+        object.position.addScaledVector(object.userData.velocity, dt);
+        object.userData.velocity.y -= 0.0045 * dt;
+      }
+      if (object.userData.spin instanceof THREE.Vector3) {
+        object.rotation.x += object.userData.spin.x * dt;
+        object.rotation.y += object.userData.spin.y * dt;
+        object.rotation.z += object.userData.spin.z * dt;
+      }
+      if (object.userData.kind === 'ring') {
+        object.scale.x += object.userData.grow * dt;
+        object.scale.y += object.userData.grow * dt;
+        object.scale.z += object.userData.grow * dt;
+      } else if (object.userData.kind === 'column') {
+        object.scale.x += object.userData.grow * dt;
+        object.scale.z += object.userData.grow * dt;
+      }
+      const material = object.material;
+      if (material instanceof THREE.Material) {
+        material.opacity = Math.max(object.userData.life, 0);
+      }
+      if (object.userData.life <= 0) {
+        this.fxGroup.remove(object);
+        disposeObject(object);
+        this.shockwaves.splice(i, 1);
       }
     }
     for (let i = this.fxGroup.children.length - 1; i >= 0; i -= 1) {
@@ -688,9 +917,9 @@ class MatchGame {
     this.composer.setSize(width, height);
     this.camera.aspect = width / height;
     const compact = width < 760 || height > width * 1.25;
-    this.boardGroup.scale.setScalar(compact ? 0.62 : 0.92);
-    this.camera.position.set(0, compact ? 15.2 : 11.6, compact ? 13.2 : 12.6);
-    this.camera.fov = compact ? 70 : 52;
+    this.boardGroup.scale.setScalar(compact ? 0.74 : 1.04);
+    this.camera.position.set(0, compact ? 14.8 : 10.8, compact ? 12.8 : 11.4);
+    this.camera.fov = compact ? 72 : 49;
     this.camera.lookAt(0, 0, 0);
     this.camera.updateProjectionMatrix();
   }
@@ -729,6 +958,10 @@ class MatchGame {
 }
 
 function disposeObject(object: THREE.Object3D) {
+  for (const child of [...object.children]) {
+    object.remove(child);
+    disposeObject(child);
+  }
   if ('geometry' in object && object.geometry instanceof THREE.BufferGeometry) object.geometry.dispose();
   const material = 'material' in object ? object.material : null;
   if (Array.isArray(material)) material.forEach((item) => item.dispose());
